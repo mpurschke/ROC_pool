@@ -3,9 +3,7 @@
 #include <pmonitor/pmonitor.h>
 #include "poolmon.h"
 
-#include <ROC_pool.h>
-#include <h2gcroc3_10G_pool.h>
-#include <caloroc1b_pool.h>
+#include <ROC_pool/ROC_pool.h>
 
 #include <TH1.h>
 #include <TH2.h>

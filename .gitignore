@@ -5,3 +5,17 @@ xx.*
 pool_validate
 *_dict.C
 *_rdict.pcm
+
+# made by autogen.sh in the source directory
+Makefile.in
+aclocal.m4
+autom4te.cache/
+configure
+config.guess
+config.sub
+depcomp
+install-sh
+ltmain.sh
+missing
+compile
+m4/

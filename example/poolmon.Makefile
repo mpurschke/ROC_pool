@@ -3,10 +3,10 @@ PACKAGE = poolmon
 ROOTFLAGS = $(shell root-config --cflags)
 ROOTLIBS = $(shell root-config --glibs)
 
-# the pool classes, one directory up
-POOLDIR = $(abspath ..)
+# where ROC_pool is installed, normally together with online_distribution
+POOLDIR ?= $(ONLINE_MAIN)
 
-CXXFLAGS = -I.  -I$(POOLDIR) $(ROOTFLAGS) -I$(ONLINE_MAIN)/include -I$(OFFLINE_MAIN)/include -fPIC
+CXXFLAGS = -I.  -I$(POOLDIR)/include $(ROOTFLAGS) -I$(ONLINE_MAIN)/include -I$(OFFLINE_MAIN)/include -fPIC
 RCFLAGS = -I.  -I$(ONLINE_MAIN)/include -I$(OFFLINE_MAIN)/include
 
 LDFLAGS = -Wl,--no-as-needed  -L$(ONLINE_MAIN)/lib -L$(OFFLINE_MAIN)/lib -lpmonitor -lEvent -lNoRootEvent -lmessage  $(ROOTLIBS) -fPIC
@@ -18,21 +18,17 @@ LINKFILE = $(PACKAGE)LinkDef.h
 
 
 ADDITIONAL_SOURCES =
-ADDITIONAL_LIBS = -L$(POOLDIR) -Wl,-rpath,$(POOLDIR) -lROC_pool
+ADDITIONAL_LIBS = -L$(POOLDIR)/lib -lROC_pool
 
 
 SO = lib$(PACKAGE).so
 
-$(SO) : $(PACKAGE).cc $(PACKAGE)_dict.C $(ADDITIONAL_SOURCES) $(LINKFILE) $(POOLDIR)/libROC_pool.so
+$(SO) : $(PACKAGE).cc $(PACKAGE)_dict.C $(ADDITIONAL_SOURCES) $(LINKFILE)
 	$(CXX) $(CXXFLAGS) -o $@ -shared  $<  $(ADDITIONAL_SOURCES) $(PACKAGE)_dict.C $(LDFLAGS)  $(ADDITIONAL_LIBS)
 
 
 $(PACKAGE)_dict.C : $(HDRFILES) $(LINKFILE)
 	rootcint -f $@  -c $(RCFLAGS) $^
-
-$(POOLDIR)/libROC_pool.so:
-	$(MAKE) -C $(POOLDIR) libROC_pool.so
-
 
 .PHONY: clean
 
