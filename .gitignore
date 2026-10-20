@@ -1,0 +1,7 @@
+*.so
+*.o
+*~
+xx.*
+pool_validate
+*_dict.C
+*_rdict.pcm
