@@ -54,31 +54,46 @@ The pmonitor example in `example/` is not installed; it is built with
 
 ## Usage
 
+In a pmonitor project:
+
     #include <ROC_pool/ROC_pool.h>
 
-    ROC_pool *pool = 0;
+    static ROC_pool *pool = 0;
 
-    // for each Event:
-    Packet *p = e->getPacket(12001);
-    if ( p )
-      {
-        if ( !pool ) pool = ROC_pool::instance(p);   // NULL: no pool for this format
-        pool->addPacket(p);
-        delete p;
+    int process_event (Event *e)
+    {
+      Packet *p = e->getPacket(12001);
+      if ( !p ) return 0;
 
-        while ( pool->depth_ok() )
-          {
-            int nwf = pool->iValue(0, "NR_WF");
-            for ( int wf = 0; wf < nwf; wf++ )
-              {
-                int ns = pool->iValue(wf, "SAMPLESIZE");
-                // ... pool->iValue(wf, sample, ch) etc.
-              }
-            pool->next();
-          }
-      }
+      if ( !pool )
+        {
+          pool = ROC_pool::instance(p);
+          if ( !pool )
+            {
+              cout << "packet " << p->getIdentifier() << " has format "
+                   << p->getHitFormat() << " - no pool for that" << endl;
+              delete p;
+              return 1;    // non-zero stops the pmonitor event loop
+            }
+        }
 
-    // at the end of the file or stream:
+      pool->addPacket(p);
+      delete p;
+
+      while ( pool->depth_ok() )
+        {
+          int nwf = pool->iValue(0, "NR_WF");
+          for ( int wf = 0; wf < nwf; wf++ )
+            {
+              int ns = pool->iValue(wf, "SAMPLESIZE");
+              // ... pool->iValue(wf, sample, ch) etc.
+            }
+          pool->next();
+        }
+      return 0;
+    }
+
+    // at the end of the file or stream, called after prun():
     pool->drain();
     // ... the same while ( pool->depth_ok() ) loop once more
 
@@ -176,12 +191,12 @@ ADC against sample (h2).
 
     cd example
     make                  # POOLDIR=<prefix> if the pool is not in $ONLINE_MAIN
-    bash poolmon.sh
+    bash poolmon.sh [file.evt]
 
-and in ROOT:
+The script opens the file if one is given (otherwise use `pfileopen()` or
+any other pmonitor source), and in ROOT:
 
     setPacketId(12001);   // the default
-    pfileopen("file.evt");
     prun();
     pooldrain();          // hand out what is left at the end of the file
     poolstatus();
