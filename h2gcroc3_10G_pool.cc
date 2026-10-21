@@ -108,7 +108,7 @@ int h2gcroc3_10G_pool::decode_line(const uint8_t *d)
   for ( int c = 0; c < 36; c++)
     {
       _open_sample.ADC[chip_offset + group_offset + c] = (ch[c] >> 20) & 0x3ff;
-      _open_sample.tot[chip_offset + group_offset + c] = (ch[c] >> 10) & 0x3f;
+      _open_sample.tot[chip_offset + group_offset + c] = (ch[c] >> 10) & 0x3ff;
       _open_sample.toa[chip_offset + group_offset + c] =  ch[c]        & 0x3ff;
     }
 
