@@ -146,7 +146,10 @@ All pools:
 Format 302 (`h2gcroc3_10G_pool`), as in the Packet:
 
 - `iValue(wf, sample, ch, what)` with "TOT", "TOA", "TRIGGER_IN",
-  "TRIGGER_OUT", "EVENT_COUNTER"
+  "TRIGGER_OUT", "EVENT_COUNTER", and "ERROR": the 3 hamming error bits
+  H1 H2 H3 from the ROC header of the half-chip that `ch` is in (H1 = 4,
+  header; H2 = 2, CM and channels 0-17; H3 = 1, Calib and channels 18-35;
+  0 = no error)
 - `lValue(wf, sample, ch)`: the sample's timestamp
 - sample-indexed calls, counting the samples of all waveforms on offer:
   `iValue(n, what)` with "SAMPLES", "TIMESTAMP", "CMN", "CALIB", and

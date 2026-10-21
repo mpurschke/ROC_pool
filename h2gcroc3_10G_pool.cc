@@ -67,6 +67,7 @@ int h2gcroc3_10G_pool::decode_line(const uint8_t *d)
 
   uint32_t ch[36];
 
+  uint32_t ROC_HDR = u4frombyte(&d[32 + 0]);
   uint32_t CMN = u4frombyte(&d[32 + 4]);
   for ( int n = 0; n < 18; n++)
     {
@@ -111,6 +112,11 @@ int h2gcroc3_10G_pool::decode_line(const uint8_t *d)
       _open_sample.tot[chip_offset + group_offset + c] = (ch[c] >> 10) & 0x3ff;
       _open_sample.toa[chip_offset + group_offset + c] =  ch[c]        & 0x3ff;
     }
+
+  // the ROC header is 0101 + 12b Bx + 6b Event + 3b Orbit + H1 H2 H3 + 0101
+  // (H2GCROC3 datasheet p. 30); H1 = error in the header, H2 in CM and
+  // channels 0-17, H3 in Calib and channels 18-35 of this half-chip
+  _open_sample.error[(chip_offset + group_offset) / 36] = (ROC_HDR >> 4) & 0x7;
 
   _open_sample.trigger_in    = trigger_in;
   _open_sample.trigger_out   = trigger_out;
@@ -285,6 +291,7 @@ int h2gcroc3_10G_pool::iValue(const int wf, const int sample, const int ch, cons
 
   if ( strcmp(what, "TOT") == 0)           return s->tot[ch];
   if ( strcmp(what, "TOA") == 0)           return s->toa[ch];
+  if ( strcmp(what, "ERROR") == 0)         return s->error[ch / 36];
   if ( strcmp(what, "TRIGGER_IN") == 0)    return s->trigger_in;
   if ( strcmp(what, "TRIGGER_OUT") == 0)   return s->trigger_out;
   if ( strcmp(what, "EVENT_COUNTER") == 0) return s->event_counter;
@@ -312,6 +319,21 @@ void h2gcroc3_10G_pool::dump(std::ostream &os)
       int ss = iValue(n, "SAMPLESIZE");
       os << " ----- Waveform  " << n << " Samples: " << ss
 	 << "  Timestamp: 0x" << hex << lValue(n, 0, 0) << "  " << dec << lValue(n, 0, 0) << endl;
+
+      // the hamming error bits (H1 H2 H3) per half-chip, only if there are any
+      for ( int h = 0; h < iValue(0, "CHANNELS") / 36; h++)
+	{
+	  int has_error = 0;
+	  for ( int is = 0; is < ss; is++)
+	    {
+	      if ( iValue(n, is, h*36, "ERROR") ) has_error = 1;
+	    }
+	  if ( !has_error) continue;
+
+	  os << " chip " << h/2 << " half " << h%2 << " ERR | ";
+	  for ( int is = 0; is < ss; is++) os << " " << setw(4) << iValue(n, is, h*36, "ERROR");
+	  os << endl;
+	}
 
       for ( int ic = 0; ic < iValue(0, "CHANNELS"); ic++)
 	{

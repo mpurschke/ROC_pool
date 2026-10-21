@@ -66,6 +66,7 @@ wf302 hash302(T *src, const int wf)
 	  h.add(src->iValue(wf, s, ch));
 	  h.add(src->iValue(wf, s, ch, "TOT"));
 	  h.add(src->iValue(wf, s, ch, "TOA"));
+	  h.add(src->iValue(wf, s, ch, "ERROR"));
 	}
     }
   r.hash = h.h;
