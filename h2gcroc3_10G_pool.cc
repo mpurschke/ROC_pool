@@ -320,21 +320,6 @@ void h2gcroc3_10G_pool::dump(std::ostream &os)
       os << " ----- Waveform  " << n << " Samples: " << ss
 	 << "  Timestamp: 0x" << hex << lValue(n, 0, 0) << "  " << dec << lValue(n, 0, 0) << endl;
 
-      // the hamming error bits (H1 H2 H3) per half-chip, only if there are any
-      for ( int h = 0; h < iValue(0, "CHANNELS") / 36; h++)
-	{
-	  int has_error = 0;
-	  for ( int is = 0; is < ss; is++)
-	    {
-	      if ( iValue(n, is, h*36, "ERROR") ) has_error = 1;
-	    }
-	  if ( !has_error) continue;
-
-	  os << " chip " << h/2 << " half " << h%2 << " ERR | ";
-	  for ( int is = 0; is < ss; is++) os << " " << setw(4) << iValue(n, is, h*36, "ERROR");
-	  os << endl;
-	}
-
       for ( int ic = 0; ic < iValue(0, "CHANNELS"); ic++)
 	{
 	  int show_this = 0;
@@ -354,7 +339,21 @@ void h2gcroc3_10G_pool::dump(std::ostream &os)
 
 	  os << setw(4) << ic << " | TOA | " << hex;
 	  for ( int is = 0; is < ss; is++) os << " " << setw(4) << iValue(n, is, ic, "TOA");
-	  os << dec << endl << endl;
+	  os << dec << endl;
+
+	  // the hamming error bits (H1 H2 H3), only if there are any
+	  int has_error = 0;
+	  for ( int is = 0; is < ss; is++)
+	    {
+	      if ( iValue(n, is, ic, "ERROR") ) has_error = 1;
+	    }
+	  if ( has_error)
+	    {
+	      os << setw(4) << ic << " | ERR | ";
+	      for ( int is = 0; is < ss; is++) os << " " << setw(4) << iValue(n, is, ic, "ERROR");
+	      os << endl;
+	    }
+	  os << endl;
 	}
     }
 }
