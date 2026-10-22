@@ -189,8 +189,14 @@ have each length, Packet by Packet and from the pool.
 ## example/
 
 A pmonitor project (`poolmon`) that feeds one packet id into a pool and
-fills two histograms: the waveform length (h1) and a persistency plot of
-ADC against sample (h2).
+fills three histograms: the waveform length from the pool (h1), a
+persistency plot of ADC against sample (h2), and for comparison the
+waveform length Packet by Packet, from the same Packets without the pool
+(h3), where the waveforms split across events show up as short pieces.
+
+It also keeps a running tally of the pool's waveforms and samples that
+have an error, i.e. a non-zero "ERROR" in any channel (for 302, the hamming
+error bits).
 
     cd example
     make                  # POOLDIR=<prefix> if the pool is not in $ONLINE_MAIN
@@ -202,7 +208,9 @@ any other pmonitor source), and in ROOT:
     setPacketId(12001);   // the default
     prun();
     pooldrain();          // hand out what is left at the end of the file
-    poolstatus();
+    poolstatus();         // includes show_errors()
+    show_errors();        // waveforms and samples with errors, of all
+    show();               // h3, h1 with the error fractions, and h2
 
 If the packet's format has no pool, `process_event` returns non-zero, which
 stops the event loop.

@@ -14,7 +14,14 @@ void setPacketId (const int id);
 // Call after prun() has gone through the file.
 void pooldrain ();
 
-// fill level and bookkeeping
+// fill level and bookkeeping, and the error tally
 void poolstatus ();
+
+// the running error tally: waveforms and samples with an error
+void show_errors ();
+
+// draw the waveform length Packet by Packet (h3) and from the pool (h1),
+// with the error fractions, and the persistency plot (h2)
+void show ();
 
 #endif /* __POOLMON_H__ */
