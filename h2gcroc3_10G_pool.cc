@@ -14,9 +14,13 @@ h2gcroc3_10G_pool::h2gcroc3_10G_pool(const unsigned int low_mark, const unsigned
   _open_wf.first = 0;
   _open_wf.length = 0;
   _last_closed_ts = 0;
-  memset(&_open_sample, 0, sizeof(sample));
-  _have_open_sample = false;
-  _old_timestamp = 0;
+  _max_timestamp = 0;
+  _closed_before = 0;
+  _crc_errors = 0;
+  _hamming_errors = 0;
+  _bad_lines = 0;
+  _late_lines = 0;
+  _resets = 0;
   _nr_offered = 0;
   _nr_offered_samples = 0;
   _nr_channels = 0;
@@ -37,6 +41,36 @@ uint64_t h2gcroc3_10G_pool::u8frombyte(const uint8_t *v)
   return r;
 }
 
+// CRC-32 of the DAQ frame as the ASIC computes it (H2GCROC3 datasheet 1.3.1): polynomial
+// 0x04C11DB7, initial value 0, no bit reflection, no final xor, MSB first
+// (same as oncsSub_idh2gcroc3_10G::crc32_frame)
+unsigned int h2gcroc3_10G_pool::crc32_frame(const uint8_t *d, const int n)
+{
+  static uint32_t table[256];
+  static bool table_done = false;
+
+  if ( !table_done)
+    {
+      for ( uint32_t i = 0; i < 256; i++)
+	{
+	  uint32_t c = i << 24;
+	  for ( int k = 0; k < 8; k++)
+	    {
+	      c = ( c & 0x80000000u) ? ( c << 1) ^ 0x04C11DB7u : ( c << 1);
+	    }
+	  table[i] = c;
+	}
+      table_done = true;
+    }
+
+  uint32_t crc = 0;
+  for ( int i = 0; i < n; i++)
+    {
+      crc = ( crc << 8) ^ table[ ( ( crc >> 24) ^ d[i]) & 0xff];
+    }
+  return crc;
+}
+
 // one datagram, starting after the marker/length: 14 header bytes, then
 // 192-byte lines, the last 4 bytes are not part of any line (same
 // boundaries as oncsSub_idh2gcroc3_10G::decode())
@@ -55,7 +89,11 @@ int h2gcroc3_10G_pool::decode_datagram(const uint32_t *d, const unsigned int nby
 // same as oncsSub_idh2gcroc3_10G::decode_line()
 int h2gcroc3_10G_pool::decode_line(const uint8_t *d)
 {
-  if ( d[0] != 0xaa && d[1] != 0x5a) return 0;
+  if ( d[0] != 0xaa || d[1] != 0x5a)
+    {
+      _bad_lines++;
+      return 0;
+    }
 
   unsigned int ichip = d[2] & 0xf;
   int group = d[3] - 36;
@@ -80,65 +118,98 @@ int h2gcroc3_10G_pool::decode_line(const uint8_t *d)
     }
   uint32_t CRC = u4frombyte(&d[188]);
 
-  if ( ichip >= MAX_CHIPS) return 0;
+  if ( ichip >= MAX_CHIPS || ( group != 0 && group != 1) )
+    {
+      _bad_lines++;
+      return 0;
+    }
+
+  // frame integrity (H2GCROC3 datasheet 1.3.1): CRC-32 over the 39 words header..ch35
+  const int link = 2*ichip + group;
+  const unsigned int crc_error = ( crc32_frame(&d[32], 156) != CRC ) ? 1 : 0;
 
   if ( (int) (ichip+1) * 72 > _nr_channels) _nr_channels = (ichip+1) * 72;
 
-  if ( !_have_open_sample)
+  // a timestamp far behind everything seen so far is a counter reset: close what we have first
+  if ( _max_timestamp > RESET_CLOCK && timestamp + RESET_CLOCK < _max_timestamp)
     {
-      memset(&_open_sample, 0, sizeof(sample));
-      _open_sample.timestamp = timestamp;
-      _old_timestamp = timestamp;
-      _have_open_sample = true;
+      close_samples( 0xffffffffffffffffULL);
+      _closed_before = 0;
+      _max_timestamp = 0;
+      _resets++;
+    }
+  if ( timestamp > _max_timestamp) _max_timestamp = timestamp;
+
+  // this line's sample is already closed - it arrived too late to be used
+  if ( timestamp < _closed_before)
+    {
+      _late_lines++;
+      return 0;
     }
 
-  // the timestamp moved on - that sample is done
-  if ( ( timestamp >= _old_timestamp && timestamp - _old_timestamp > 5 ) ||
-       ( timestamp <  _old_timestamp && _old_timestamp - timestamp > 5 ) )
+  // the lines of a sample arrive within 5 clocks of each other, but the links can run a
+  // sample ahead of each other, so lines of neighbouring samples interleave. Find the open
+  // sample this line belongs to, or open one.
+  std::map<uint64_t, sample>::iterator it = _open.lower_bound( timestamp > 5 ? timestamp - 5 : 0);
+  if ( it == _open.end() || it->first > timestamp + 5)
     {
-      close_sample();
-      memset(&_open_sample, 0, sizeof(sample));
-      _open_sample.timestamp = timestamp;
-      _have_open_sample = true;
+      it = _open.emplace(timestamp, sample()).first;
+      memset(&it->second, 0, sizeof(sample));
+      it->second.timestamp = timestamp;
     }
-  _old_timestamp = timestamp;
+  sample &s = it->second;
 
   int chip_offset = ichip * 72;
   int group_offset = group ? 36 : 0;
 
   for ( int c = 0; c < 36; c++)
     {
-      _open_sample.ADC[chip_offset + group_offset + c] = (ch[c] >> 20) & 0x3ff;
-      _open_sample.tot[chip_offset + group_offset + c] = (ch[c] >> 10) & 0x3ff;
-      _open_sample.toa[chip_offset + group_offset + c] =  ch[c]        & 0x3ff;
+      s.ADC[chip_offset + group_offset + c] = (ch[c] >> 20) & 0x3ff;
+      s.tot[chip_offset + group_offset + c] = (ch[c] >> 10) & 0x3ff;
+      s.toa[chip_offset + group_offset + c] =  ch[c]        & 0x3ff;
     }
 
   // the ROC header is 0101 + 12b Bx + 6b Event + 3b Orbit + H1 H2 H3 + 0101
   // (H2GCROC3 datasheet p. 30); H1 = error in the header, H2 in CM and
   // channels 0-17, H3 in Calib and channels 18-35 of this half-chip
-  _open_sample.error[(chip_offset + group_offset) / 36] = (ROC_HDR >> 4) & 0x7;
+  s.error[(chip_offset + group_offset) / 36] = (ROC_HDR >> 4) & 0x7;
 
-  _open_sample.trigger_in    = trigger_in;
-  _open_sample.trigger_out   = trigger_out;
-  _open_sample.event_counter = evt_ctr;
-  _open_sample.cmn           = CMN;
-  _open_sample.calib         = CALIB;
-  _open_sample.crc32         = CRC;
+  s.trigger_in    = trigger_in;
+  s.trigger_out   = trigger_out;
+  s.event_counter = evt_ctr;
+  s.cmn           = CMN;
+  s.calib         = CALIB;
+  s.crc32         = CRC;
+  s.crc_error[link] = crc_error;
+  if ( crc_error) _crc_errors++;
+  if ( s.error[link]) _hamming_errors++;
+
+  // samples far enough behind the newest timestamp cannot receive lines anymore
+  if ( _max_timestamp > REORDER_WINDOW) close_samples( _max_timestamp - REORDER_WINDOW);
 
   return 0;
 }
 
-// the open sample is complete; append it to the open waveform, or close
-// that and start a new one (same rule as oncsSub_idh2gcroc3_10G::parse_timeline())
-void h2gcroc3_10G_pool::close_sample()
+// close the open samples below "before", oldest first
+void h2gcroc3_10G_pool::close_samples(const uint64_t before)
 {
-  if ( !_have_open_sample) return;
+  std::map<uint64_t, sample>::iterator it = _open.begin();
+  while ( it != _open.end() && it->first < before)
+    {
+      close_sample(it->second);
+      it = _open.erase(it);
+    }
+  if ( before > _closed_before) _closed_before = before;
+}
 
+// a closed sample: append it to the open waveform, or close that and
+// start a new one (same rule as oncsSub_idh2gcroc3_10G::parse_timeline())
+void h2gcroc3_10G_pool::close_sample(const sample &closed)
+{
   const unsigned long long number = _sample_base + _samples.size();
-  const uint64_t ts = _open_sample.timestamp;
+  const uint64_t ts = closed.timestamp;
 
-  _samples.push_back(_open_sample);
-  _have_open_sample = false;
+  _samples.push_back(closed);
 
   if ( _have_open_wf && ts - _last_closed_ts > CONTIGUOUS_CLOCK)
     {
@@ -158,7 +229,7 @@ void h2gcroc3_10G_pool::close_sample()
 
 void h2gcroc3_10G_pool::close_open()
 {
-  close_sample();
+  close_samples( 0xffffffffffffffffULL);
   if ( _have_open_wf)
     {
       _waveforms.push_back(_open_wf);
@@ -198,7 +269,7 @@ void h2gcroc3_10G_pool::drop_offer()
 
 bool h2gcroc3_10G_pool::has_pending() const
 {
-  return ( _have_open_sample || _have_open_wf || !_waveforms.empty() );
+  return ( !_open.empty() || _have_open_wf || !_waveforms.empty() );
 }
 
 const h2gcroc3_10G_pool::sample *h2gcroc3_10G_pool::getSample(const int wf, const int s) const
@@ -241,6 +312,14 @@ int h2gcroc3_10G_pool::iValue(const int n, const char *what)
       if ( n < 0 || (unsigned int) n >= _nr_offered) return 0;
       return _waveforms[n].length;
     }
+
+  // problem counts, cumulative over the stream
+  if ( strcmp(what, "CRCERRORS") == 0)     return (int) _crc_errors;
+  if ( strcmp(what, "HAMMINGERRORS") == 0) return (int) _hamming_errors;
+  if ( strcmp(what, "BADLINES") == 0)      return (int) _bad_lines;
+  if ( strcmp(what, "LATELINES") == 0)     return (int) _late_lines;
+  if ( strcmp(what, "RESETS") == 0)        return (int) _resets;
+  if ( strcmp(what, "DECODEERRORS") == 0)  return (int) (_bad_lines + _late_lines + _resets);
 
   const sample *s = getSample(n);
   if ( !s) return 0;
@@ -295,6 +374,7 @@ int h2gcroc3_10G_pool::iValue(const int wf, const int sample, const int ch, cons
   if ( strcmp(what, "TRIGGER_IN") == 0)    return s->trigger_in;
   if ( strcmp(what, "TRIGGER_OUT") == 0)   return s->trigger_out;
   if ( strcmp(what, "EVENT_COUNTER") == 0) return s->event_counter;
+  if ( strcmp(what, "CRCERROR") == 0)      return s->crc_error[ 2*(ch/72) + (ch%72)/36 ];
   return 0;
 }
 
