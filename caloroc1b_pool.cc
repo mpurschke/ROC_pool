@@ -41,6 +41,16 @@ int caloroc1b_pool::decode_datagram(const uint32_t *payload, const unsigned int 
       unsigned int truncated = (specs >>  7) & 0x1;
       unsigned int numhits   = (specs >> 16) & 0x1f;
       unsigned int af_flag   = (specs >> 24) & 0x1;
+      unsigned int has_ts    = (specs >> 29) & 0x1;
+
+      // the 48-bit global timestamp, in 2 words before the frame (TSH, TSL)
+      unsigned long long global_ts = 0;
+      if ( has_ts)
+	{
+	  if ( idx + 2 > payload_words) break;
+	  global_ts = ( (unsigned long long) (payload[idx] & 0xffff) << 32 ) | payload[idx+1];
+	  idx += 2;
+	}
 
       if ( stored == 0 || idx + stored > payload_words) break;
 
@@ -55,6 +65,7 @@ int caloroc1b_pool::decode_datagram(const uint32_t *payload, const unsigned int 
       f.mode        = (dh >> 26) & 0x3;
       f.evt_counter = (dh >> 18) & 0x3f;
       f.timestamp   = (dh >>  1) & 0xffff;
+      f.global_ts   = global_ts;
       f.hitmap      = hh & 0x3ffff;
       f.numhits     = numhits;
       f.truncated   = truncated;
@@ -239,6 +250,15 @@ int caloroc1b_pool::iValue(const int wf, const int sample, const int ch, const c
   return 0;
 }
 
+long long caloroc1b_pool::lValue(const int wf, const int sample, const int ch)
+{
+  decode();
+  int localch;
+  const caloroc_frame *f = getFrame(wf, sample, ch, localch);
+  if ( !f) return 0;
+  return (long long) f->global_ts;
+}
+
 void caloroc1b_pool::dump(std::ostream &os)
 {
   int nwf = iValue(0, "NR_WF");
@@ -254,6 +274,14 @@ void caloroc1b_pool::dump(std::ostream &os)
     {
       int ssize = iValue(w, "SAMPLESIZE");
       os << " ----- Waveform " << w << "  Samples: " << ssize << endl;
+
+      // the global timestamp of the first sample, per link
+      for ( int link = 0; link < NUM_LINKS; link++)
+	{
+	  if ( !iValue(link, "LINKPRESENT") ) continue;
+	  long long ts = lValue(w, 0, link * NUM_CHANNELS_PER_LINK);
+	  if ( ts) os << "  link " << link << " timestamp 0x" << hex << ts << dec << " (" << ts << ")" << endl;
+	}
 
       for ( int ch = 0; ch < iValue(0, "CHANNELS"); ch++)
 	{

@@ -150,7 +150,7 @@ Format 302 (`h2gcroc3_10G_pool`), as in the Packet:
   H1 H2 H3 from the ROC header of the half-chip that `ch` is in (H1 = 4,
   header; H2 = 2, CM and channels 0-17; H3 = 1, Calib and channels 18-35;
   0 = no error)
-- `lValue(wf, sample, ch)`: the sample's timestamp
+- `lValue(wf, sample, ch)`: the sample's timestamp (all pools have this call)
 - sample-indexed calls, counting the samples of all waveforms on offer:
   `iValue(n, what)` with "SAMPLES", "TIMESTAMP", "CMN", "CALIB", and
   `iValue(sample, ch [, "TOT" / "TOA"])`
@@ -161,7 +161,9 @@ Format 310 (`caloroc1b_pool`), as in the Packet:
 
 - `iValue(wf, sample, ch, what)` with "ADC1", "ADC2", "TOA", "GAIN"
   (plain `iValue(wf, sample, ch)` is ADC1)
-- `iValue(link, "LINKPRESENT")`
+- `lValue(wf, sample, ch)`: the 48-bit global timestamp of the sample (0 if
+  the data have none)
+- `iValue(link, "LINKPRESENT")`, links 0-11
 - channels of all links in one range, link = ch / 18
 - `iValue(wf, "SAMPLESIZE")` is the longest of the links' waveforms wf;
   a shorter link reads back zeros past its end

@@ -99,6 +99,10 @@ wf310 hash310(T *src, const int wf, const int link)
 	  v[s].push_back(src->iValue(wf, s, ch, "TOA"));
 	  v[s].push_back(src->iValue(wf, s, ch, "GAIN"));
 	}
+      // the global timestamp (one per link and sample), split into two ints
+      long long ts = src->lValue(wf, s, link * 18);
+      v[s].push_back((int) (ts >> 32));
+      v[s].push_back((int) (ts & 0xffffffff));
       for ( int x : v[s]) if ( x) last = s;
     }
   hasher h;
@@ -139,7 +143,7 @@ void match(const vector<W> &ref, const vector<W> &pool, long &found, long &missi
 struct result
 {
   vector<wf302> wf302s;
-  vector<wf310> wf310s[6];
+  vector<wf310> wf310s[caloroc1b_pool::NUM_LINKS];
   long datagrams = 0;
   long bad_markers = 0;
   long truncated = 0;
@@ -172,7 +176,7 @@ result run_pool(const char *file, const int id, const int format,
 	    if ( n > r.max_offer) r.max_offer = n;
 	    for ( int wf = 0; wf < n; wf++)
 	      {
-		for ( int link = 0; link < 6; link++)
+		for ( int link = 0; link < caloroc1b_pool::NUM_LINKS; link++)
 		  {
 		    wf310 w = hash310(p310, wf, link);
 		    if ( w.samples) r.wf310s[link].push_back(w);
@@ -239,7 +243,7 @@ int main(int argc, char *argv[])
   long ref_samples = 0;
   vector<wf302> ref302;
   map<int,long> ref_sizes;
-  vector<wf310> ref310[6];
+  vector<wf310> ref310[caloroc1b_pool::NUM_LINKS];
 
   Event *e;
   while ( (e = it->getNextEvent()) )
@@ -264,7 +268,7 @@ int main(int argc, char *argv[])
 		}
 	      else if ( format == 310)
 		{
-		  for ( int link = 0; link < 6; link++)
+		  for ( int link = 0; link < caloroc1b_pool::NUM_LINKS; link++)
 		    {
 		      vector<wf310> l;
 		      for ( int wf = 0; wf < n; wf++)
@@ -314,7 +318,7 @@ int main(int argc, char *argv[])
 	}
       else
 	{
-	  for ( int link = 0; link < 6; link++)
+	  for ( int link = 0; link < caloroc1b_pool::NUM_LINKS; link++)
 	    {
 	      match(ref310[link], r.wf310s[link], found, missing);
 	      wfs += r.wf310s[link].size();
@@ -365,7 +369,7 @@ int main(int argc, char *argv[])
 	    }
 	  else
 	    {
-	      for ( int link = 0; link < 6; link++)
+	      for ( int link = 0; link < caloroc1b_pool::NUM_LINKS; link++)
 		{
 		  same = same && (r.wf310s[link].size() == first.wf310s[link].size());
 		  for ( size_t k = 0; same && k < r.wf310s[link].size(); k++)

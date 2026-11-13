@@ -92,6 +92,7 @@ public:
   virtual int iValue(const int n, const char *what) = 0;
   virtual int iValue(const int wf, const int sample, const int ch) = 0;
   virtual int iValue(const int wf, const int sample, const int ch, const char *what) = 0;
+  virtual long long lValue(const int wf, const int sample, const int ch) = 0;   // the sample's timestamp
 
   virtual void dump(std::ostream &os = std::cout) = 0;
 

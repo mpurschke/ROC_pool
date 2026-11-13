@@ -29,9 +29,12 @@ public:
   // "ADC1", "ADC2", "TOA", "GAIN"
   int    iValue(const int wf, const int sample, const int ch, const char *what);
 
+  // the 48-bit global timestamp of the sample, 0 if the frame has none
+  long long lValue(const int wf, const int sample, const int ch);
+
   void dump(std::ostream &os = std::cout);
 
-  static const int NUM_LINKS = 6;
+  static const int NUM_LINKS = 12;
   static const int NUM_CHANNELS_PER_LINK = 18;
   static const int CONTIGUOUS_CLOCK = 5;
 
@@ -47,7 +50,8 @@ protected:
   {
     unsigned int mode;
     unsigned int evt_counter;
-    unsigned int timestamp;
+    unsigned int timestamp;           // the ASIC's 16b timestamp
+    unsigned long long global_ts;     // 48b global timestamp, 0 if not sent
 
     unsigned int hitmap;
     unsigned int numhits;
